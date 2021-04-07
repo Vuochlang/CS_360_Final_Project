@@ -9,7 +9,6 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <errno.h>
-#include <time.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <netdb.h>
