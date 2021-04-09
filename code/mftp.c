@@ -3,10 +3,16 @@
 void createClient();
 void lsCommand();
 void show(char* pathName);
+void parse(char*, char*, char*);
+void cdCommand(char*);
+int isDirectory (char* path);
+void callCommands(char *, int sockfd);
+void exitCommand(int sockfd);
 
 bool debug = false;
 char portNumber[20];
 char hostAddress[20];
+int max = 200;
 
 int main(int argc, char* argv[]) {
     if (argc == 4 && strcmp(argv[1], "-d") == 0) {
@@ -29,7 +35,6 @@ int main(int argc, char* argv[]) {
 }
 
 void createClient() {
-    int max = 200;
     char buffer[max];
     char messageRead[max];
 
@@ -69,73 +74,133 @@ void createClient() {
 
         // read from command line
         while ((readResult = read(0, buffer, max)) > 0) {
-            if (strncmp("exit", buffer, 4) == 0) {
-                if (debug) {
-                    printf("Command string = 'exit'\n");
-                    printf("Exit command encountered\n");
-                }
-                bzero(buffer, max);
-
-                write(socketfd, "Q", 1);
-                if (debug)  printf("Awaiting server response\n");
-                while ((readResult = read(socketfd, buffer, max)) > 0) {
-                    if (strcmp(buffer, "A") == 0 && debug) {
-                        printf("Received server response: '%s'\n", buffer);
-                        printf("Client exiting normally\n");
-                        return;
-                    }
-                    return;
-                }
-            }
-            else if (strncmp("ls", buffer, 2) == 0) {
-                printf("Command string = %s", buffer);
-                lsCommand();
-            }
-            else if (strcmp("rls", buffer) == 0) {
-                printf("Command string = %s\n", buffer);
-                write(socketfd, buffer, strlen(buffer));
-                // get server responses
-                while ((readResult = read(socketfd, buffer, max)) > 0) {
-                    write(1, buffer, readResult);
-                    break;
-                }
-            }
-            else if(strncmp("cd" , buffer, 2) == 0) {
-                printf("Command string = %s\n", buffer);
-            }
-            else {
-                printf("Command string = %s\n", buffer);
-                write(socketfd, buffer, strlen(buffer));
-                // get server responses
-                while ((readResult = read(socketfd, buffer, max)) > 0) {
-                    write(1, buffer, readResult);
-                    break;
-                }
-            }
-
+            callCommands(buffer, socketfd);
             bzero(buffer, max); // empty buffer
             write(1, prompt, strlen(prompt));  // print the prompt
         }
     }
 }
 
+void callCommands(char *buffer, int socketfd) {
+    char command[max];
+    char pathName[max];
+    int readResult;
+
+    // eliminate the new line
+    buffer[strlen(buffer) - 1] = '\0';
+
+    if (strncmp("exit", buffer, 4) == 0) {
+        if (debug)
+            printf("--- Command string = '%s'\n", buffer);
+        exitCommand(socketfd);
+        exit(0);
+    }
+    else if (strncmp("ls", buffer, 2) == 0) {
+        if (debug)
+            printf("--- Command string = '%s'\n", buffer);
+        lsCommand();
+        if (debug)
+            printf("--- ls execution completed\n");
+    }
+    else if (strncmp("cd", buffer, 2) == 0) {
+        parse(buffer, command, pathName);
+        if (debug)
+            printf("--- Command string = '%s' with parameter = '%s'\n", command, pathName);
+        cdCommand(pathName);
+    }
+    else if (strcmp("rls", buffer) == 0) {
+        if (debug)
+            printf("--- Command string = '%s'\n", buffer);
+        write(socketfd, buffer, strlen(buffer));
+        // get server responses
+        while ((readResult = read(socketfd, buffer, max)) > 0) {
+            write(1, buffer, readResult);
+            break;
+        }
+    }
+    else if (strncmp("rcd", buffer, 3) == 0) {
+        parse(buffer, command, pathName);
+        if (debug)
+            printf("--- Command string = '%s' with parameter = '%s'\n", command, pathName);
+    }
+    else if (strncmp("get", buffer, 3) == 0) {
+        parse(buffer, command, pathName);
+        if (debug)
+            printf("--- Command string = '%s' with parameter = '%s'\n", command, pathName);
+    }
+    else if (strncmp("show", buffer, 4) == 0) {
+        parse(buffer, command, pathName);
+        if (debug)
+            printf("--- Command string = '%s' with parameter = '%s'\n", command, pathName);
+    }
+    else if (strncmp("put", buffer, 3) == 0) {
+        parse(buffer, command, pathName);
+        if (debug)
+            printf("--- Command string = '%s' with parameter = '%s'\n", command, pathName);
+    }
+    else {
+        printf("--- Command '%s' is unknown - ignored\n", buffer);
+    }
+}
+
+void cdCommand(char *path) {
+    if (isDirectory(path)) {
+        if (chdir(path) == 0) {
+            if (debug) {
+                printf("Changed local directory to %s\n", path);
+                printf("--- cd execution completed\n");
+            }
+            return;
+        }
+        else
+            write(1, strerror(errno), strlen(strerror(errno)));
+    }
+    printf("Error: the given path <%s> is not a directory - ignored\n", path);
+}
+
+int isDirectory (char* path) {  // directory and user can read
+    struct stat area, *s = &area;
+    return ((lstat(path, s) == 0) && (s -> st_mode & S_IRUSR) && S_ISDIR(s -> st_mode));
+}
+
+void parse(char *buffer, char *command, char *path) {
+    char *temp;
+    int i = 0;
+
+    temp = strtok(buffer, " ");
+    while (temp != NULL) {
+        if (i == 0)
+            strcpy(command, temp);
+        else
+            strcpy(path, temp);
+        temp = strtok(NULL, " ");
+        i++;
+    }
+}
+
+
 void lsCommand() {
     int pid = fork();
 
     if (pid != 0) {
-        printf("Client parent waiting on child process %d to run ls locally\n", pid);
+        if (debug)
+            printf("Client parent waiting on child process %d to run ls locally\n", pid);
         wait(&pid);
+        if (debug)
+            printf("Client parent continuing\n");
         return;
     }
     else {
-        printf("Client child process %d executing local ls | more\n", getpid());
+        if(debug)
+            printf("Client child process %d executing local ls | more\n", getpid());
 
         int fd[2], reader, writer;
         assert(pipe(fd) >= 0);
         reader = fd[0];
         writer = fd[1];
 
-        printf("Child process %d starting more\n", getpid());
+        if(debug)
+            printf("Child process %d starting more\n", getpid());
         int pid2 = fork();
         if (pid2 != 0) { // parent
             close(writer);
@@ -145,28 +210,49 @@ void lsCommand() {
             close(reader);
             wait(&pid2);
 
-            char *arg[] = {"more", "-20", NULL};
+            char *arg = "-20";
             char *command = "more";
-
-            if (execvp(command, arg) < 0) {
+            if (execlp(command, command, arg, NULL) < 0) {
                 printf("%s\n", strerror(errno));
             }
             printf("Error occurred during 'execvp'\n");
         }
         else {
-            printf("Child process %d starting ls\n", getpid());
+            if(debug)
+                printf("Child process %d starting ls\n", getpid());
 
             // child process, run the 'ls -l' and redirect the output to stdin
             close(reader);
             dup2(writer, STDOUT_FILENO);  // connect stdout as the writer
             close(writer);
 
-            char *arg[] = {"ls", "-l", NULL};
+            char *arg = "-l";
             char *command = "ls";
-            if (execvp(command, arg) < 0) {
+            if (execlp(command, command, arg, NULL) < 0) {
                 printf("%s\n", strerror(errno));
             }
             printf("Error occurred during 'execvp'\n");
         }
+    }
+}
+
+void exitCommand(int socketFd) {
+    char buffer[2];
+    int readResult;
+
+    if (debug)
+        printf("Exit command encountered\n");
+
+    write(socketFd, "Q", 1);
+    if (debug)
+        printf("Awaiting server response\n");
+
+    while ((readResult = read(socketFd, buffer, 2)) > 0) {
+        if (strcmp(buffer, "A") == 0 && debug) {
+            printf("Received server response: '%s'\n", buffer);
+            printf("--- Client exiting normally\n");
+            return;
+        }
+        return;
     }
 }

@@ -17,5 +17,6 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 
 #endif //FINAL_PROJECT_ALL_H
