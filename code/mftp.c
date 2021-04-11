@@ -3,9 +3,9 @@
 void createClient();
 void lsCommand();
 void show(char* pathName);
-void parse(char*, char*, char*);
+//void parse(char*, char*, char*);
 void cdCommand(char*);
-int isDirectory (char* path);
+void rcdCommand(char*, int sockfd);
 void callCommands(char *, int sockfd);
 void exitCommand(int sockfd);
 void serverCommand(int, char*);
@@ -115,10 +115,14 @@ void callCommands(char *buffer, int socketfd) {
             printf("--- Command string = '%s'\n", buffer);
     }
     else if (strncmp("rcd", buffer, 3) == 0) {
-        serverCommand(socketfd, buffer);
-        parse(buffer, command, pathName);
-        if (debug)
-            printf("--- Command string = '%s' with parameter = '%s'\n", command, pathName);
+        if (strlen(buffer) == 3) {
+            printf("Missing parameter for 'rcd' command - ignored\n");
+        }
+        else {
+            parse(buffer, command, pathName);
+            printf("Command string = '%s' with parameter = '%s'\n", command, pathName);
+            rcdCommand(pathName, socketfd);
+        }
     }
     else if (strncmp("get", buffer, 3) == 0) {
         parse(buffer, command, pathName);
@@ -138,6 +142,27 @@ void callCommands(char *buffer, int socketfd) {
     else {
         printf("--- Command '%s' is unknown - ignored\n", buffer);
     }
+    bzero(command, max);
+    bzero(pathName, max);
+}
+
+void rcdCommand(char* path, int socketFd) {
+    char serverCommand[strlen(path) + 1];
+    char response[max];
+    int result;
+
+    strcpy(serverCommand, "C");
+    strncat(serverCommand, path, strlen(path));
+    write(socketFd, serverCommand, strlen(serverCommand));
+
+    printf("Awaiting server response\n");
+    while ((result = read(socketFd, response, max)) > 0) {
+        printf("Received server response '%s'\n", response);
+        if (strncmp(response, "A", 1) == 0 && debug) {
+            printf("Changed remote directory to %s\n", path);
+        }
+        break;
+    }
 }
 
 void serverCommand(int socketFd, char* myCommand) {
@@ -150,13 +175,13 @@ void serverCommand(int socketFd, char* myCommand) {
 
     printf("Awaiting server response\n");
     while ((result = read(socketFd, buffer, max)) > 0) {
-        strcpy(portString, buffer);
+        strncpy(portString, buffer, result);
         printf("Received server response '%s'\n", portString);
         break;
     }
 
     // split and get port number
-    char* temp = buffer + 1;
+    char* temp = portString + 1;
     char newPortNumber[6];
     strncpy(newPortNumber, temp, 6);
     printf("Obtained port number %s from server\n", newPortNumber);
@@ -199,6 +224,25 @@ void serverCommand(int socketFd, char* myCommand) {
         }
         break;
     }
+
+    if (strcmp("rls", myCommand) == 0) {
+        printf("got rls command\n");
+    }
+//    else {
+//        char command[5];
+//        char path[max];
+//        parse(myCommand, command, path);
+//
+//        if (strncmp(command, "rcd", 3) == 0) {
+//            char serverCommand[strlen(path) + 1];
+//            strcpy(serverCommand, "C");
+//            strncat(serverCommand, path, strlen(path));
+//            write(socketfd2, serverCommand, strlen(serverCommand));
+//        } else {
+//            printf("got %s command\n", myCommand);
+//        }
+//    }
+
     close(socketfd2);
 }
 
@@ -217,27 +261,6 @@ void cdCommand(char *path) {
     }
     printf("Error: the given path <%s> is not a directory - ignored\n", path);
 }
-
-int isDirectory (char* path) {  // directory and user can read
-    struct stat area, *s = &area;
-    return ((lstat(path, s) == 0) && (s -> st_mode & S_IRUSR) && S_ISDIR(s -> st_mode));
-}
-
-void parse(char *buffer, char *command, char *path) {
-    char *temp;
-    int i = 0;
-
-    temp = strtok(buffer, " ");
-    while (temp != NULL) {
-        if (i == 0)
-            strcpy(command, temp);
-        else
-            strcpy(path, temp);
-        temp = strtok(NULL, " ");
-        i++;
-    }
-}
-
 
 void lsCommand() {
     int pid = fork();

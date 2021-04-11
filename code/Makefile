@@ -4,11 +4,11 @@ HEADER = mftp.h
 
 all: mftp mftpserve
 
-mftp: mftp.c $(HEADER)
-	gcc -o mftp mftp.c
+mftp: mftp.c commonfunc.c $(HEADER)
+	gcc -o mftp mftp.c commonfunc.c
 
-mftpserve: mftpserve.c $(HEADER)
-	gcc -o mftpserve mftpserve.c
+mftpserve: mftpserve.c commonfunc.c $(HEADER)
+	gcc -o mftpserve mftpserve.c commonfunc.c
 
 -PHONY: clean
 clean:

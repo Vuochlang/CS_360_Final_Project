@@ -20,5 +20,7 @@
 #include <sys/stat.h>
 
 void parse(char*, char*, char*);
+int isDirectory (char* path);
+bool setDebug(int i);
 
 #endif //FINAL_PROJECT_ALL_H
