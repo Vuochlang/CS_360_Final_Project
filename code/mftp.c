@@ -8,6 +8,7 @@ void cdCommand(char*);
 int isDirectory (char* path);
 void callCommands(char *, int sockfd);
 void exitCommand(int sockfd);
+void serverCommand(int, char*);
 
 bool debug = false;
 char portNumber[20];
@@ -109,16 +110,12 @@ void callCommands(char *buffer, int socketfd) {
         cdCommand(pathName);
     }
     else if (strcmp("rls", buffer) == 0) {
+        serverCommand(socketfd, buffer);
         if (debug)
             printf("--- Command string = '%s'\n", buffer);
-        write(socketfd, buffer, strlen(buffer));
-        // get server responses
-        while ((readResult = read(socketfd, buffer, max)) > 0) {
-            write(1, buffer, readResult);
-            break;
-        }
     }
     else if (strncmp("rcd", buffer, 3) == 0) {
+        serverCommand(socketfd, buffer);
         parse(buffer, command, pathName);
         if (debug)
             printf("--- Command string = '%s' with parameter = '%s'\n", command, pathName);
@@ -142,6 +139,72 @@ void callCommands(char *buffer, int socketfd) {
         printf("--- Command '%s' is unknown - ignored\n", buffer);
     }
 }
+
+void serverCommand(int socketFd, char* myCommand) {
+    int result;
+    char buffer[max];
+    char portString[16];
+
+    write(socketFd, "D", 1);
+    printf("Sent D command to server\n");
+
+    printf("Awaiting server response\n");
+    while ((result = read(socketFd, buffer, max)) > 0) {
+        strcpy(portString, buffer);
+        printf("Received server response '%s'\n", portString);
+        break;
+    }
+
+    // split and get port number
+    char* temp = buffer + 1;
+    char newPortNumber[6];
+    strncpy(newPortNumber, temp, 6);
+//    strcpy(newPortNumber, temp);
+    printf("Obtained port number %s from server\n", newPortNumber);
+
+    int socketfd2;
+    struct addrinfo hints, *actualdata;
+    memset(&hints, 0, sizeof(hints));
+    int err;
+
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_family = AF_INET;
+    err = getaddrinfo(hostAddress, newPortNumber, &hints, &actualdata);
+    if (err != 0) {
+        fprintf(stderr, "Error: %s\n", gai_strerror(err));
+        exit(1);
+    }
+
+    socketfd2 = socket(actualdata -> ai_family, actualdata -> ai_socktype, 0);
+    if (socketfd2 < 0) {
+        fprintf(stderr, "Error: %s\n", strerror(errno));
+        exit(1);
+    }
+    if (debug) {
+        printf("Created socket with descriptor %d\n", socketfd2);
+        char * hostIp = inet_ntoa (*((struct in_addr*)host_entry->h_addr_list[0]))
+        printf("Data Socket Address/Port => %s:%s\n", inet_ntoa(*((struct in_addr*)
+                host_entry->h_addr_list[0])), newPortNumber);
+        printf("Attempting to establish Data Connection...\n");
+    }
+
+    if (connect(socketfd2, actualdata -> ai_addr, actualdata -> ai_addrlen) < 0) {
+        fprintf(stderr, "Error: %s\n", strerror(errno));
+        exit(1);
+    }
+    printf("Data connection to server established %s\n", hostAddress);
+
+    printf("Awaiting server response\n");
+    while ((result = read(socketfd2, buffer, max)) > 0) {
+        if(strcmp(buffer, "A") == 0 && debug) {
+            printf("Received server response: 'A'\n");
+            printf("Displaying response from server\n");
+        }
+        break;
+    }
+    close(socketfd2);
+}
+
 
 void cdCommand(char *path) {
     if (isDirectory(path)) {

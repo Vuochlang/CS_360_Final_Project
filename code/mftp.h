@@ -19,4 +19,6 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 
+void parse(char*, char*, char*);
+
 #endif //FINAL_PROJECT_ALL_H
