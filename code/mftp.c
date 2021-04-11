@@ -159,7 +159,6 @@ void serverCommand(int socketFd, char* myCommand) {
     char* temp = buffer + 1;
     char newPortNumber[6];
     strncpy(newPortNumber, temp, 6);
-//    strcpy(newPortNumber, temp);
     printf("Obtained port number %s from server\n", newPortNumber);
 
     int socketfd2;
@@ -182,9 +181,7 @@ void serverCommand(int socketFd, char* myCommand) {
     }
     if (debug) {
         printf("Created socket with descriptor %d\n", socketfd2);
-        char * hostIp = inet_ntoa (*((struct in_addr*)host_entry->h_addr_list[0]))
-        printf("Data Socket Address/Port => %s:%s\n", inet_ntoa(*((struct in_addr*)
-                host_entry->h_addr_list[0])), newPortNumber);
+        printf("Data Socket Address/Port => %s:%s\n", hostAddress, newPortNumber);
         printf("Attempting to establish Data Connection...\n");
     }
 
@@ -196,7 +193,7 @@ void serverCommand(int socketFd, char* myCommand) {
 
     printf("Awaiting server response\n");
     while ((result = read(socketfd2, buffer, max)) > 0) {
-        if(strcmp(buffer, "A") == 0 && debug) {
+        if(strncmp(buffer, "A", 1) == 0 && debug) {
             printf("Received server response: 'A'\n");
             printf("Displaying response from server\n");
         }

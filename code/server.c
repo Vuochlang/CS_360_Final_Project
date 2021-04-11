@@ -2,20 +2,13 @@
 
 int portNumber = 49999;
 bool debug = false;
+int max = 200;
+char hostName[120] = {};
 
 void createSever();
-bool isNumber(const char argv[]) {
-    for (int i = 0; i < strlen(argv); i++) {
-        if (!isdigit(argv[i]))
-            return false;
-    }
-    return true;
-}
-
-void setDebug() {
-    debug = true;
-    printf("Parent: Debug output enabled.\n");
-}
+bool isNumber(const char argv[]);
+void setDebug();
+void commandD(int sockfd, struct sockaddr_in*);
 
 int main(int argc, char const *argv[]) {
     bool error = true;
@@ -107,14 +100,12 @@ void createSever() {
             printf("Parent: accepted client connection with descriptor %d\n", listenFd);
 
         bool isExit = false;
-        int max = 200;
         int pid = fork();
         int status;
 
         if (pid == 0) {
             printf("Child %d: started\n", getpid());
 
-            char hostName[120] = {};
             int hostEntry;
 
             hostEntry = getnameinfo((struct sockaddr *) &clientAddr,
@@ -144,14 +135,19 @@ void createSever() {
                     if (strcmp("Q", command) == 0) {
                         printf("Child %d: Quitting\n", getpid());
 
-                        if (debug)
-                            printf("Child %d: Sending positive acknowledgement\n", getpid());
                         write(listenFd, "A", 1);
 
-                        if (debug)
+                        if (debug) {
+                            printf("Child %d: Sending positive acknowledgement\n",
+                                   getpid());
                             printf("Child %d: exiting normally.\n", getpid());
+                        }
+
                         close(listenFd);
                         exit(EXIT_SUCCESS);
+                    }
+                    else if (strcmp("D", command) == 0) {
+                        commandD(listenFd, &clientAddr);
                     }
                     else {
                         char temp[] = "I got your command ";
@@ -160,12 +156,6 @@ void createSever() {
                         write(listenFd, temp, strlen(temp));
                     }
                 }
-                else if (strlen(command) == 0) {
-                    printf("here exit?\n");
-                    close(listenFd);
-                    exit(1);
-                }
-
                 bzero(command, max);
             }
         }
@@ -179,4 +169,93 @@ void createSever() {
             close(listenFd);
         }
     }
+}
+
+void commandD(int listenFd, struct sockaddr_in* clientAddr) {
+    int socketFd2;
+
+    // make a socket
+    socketFd2 = socket(AF_INET, SOCK_STREAM, 0);
+    if (socketFd2 < 0) {
+        fprintf(stderr, "Error: %s\n", strerror(errno));
+        exit(1);
+    }
+    if (debug)
+        printf("Child %d: data socket created with descriptor %d\n", getpid(), socketFd2);
+
+    struct sockaddr_in servAddr2;
+    memset(&servAddr2, 0, sizeof(servAddr2));
+    servAddr2.sin_family = AF_INET;
+    servAddr2.sin_addr.s_addr = htonl(INADDR_ANY);
+    servAddr2.sin_port = htons(0); // wildcard
+    if (bind(socketFd2, (struct sockaddr *) &servAddr2, sizeof(servAddr2)) < 0) {
+        fprintf(stderr, "Error: %s\n", strerror(errno));
+        exit(1);
+    }
+
+    socklen_t length2 = sizeof(servAddr2);
+    if (getsockname(socketFd2, (struct sockaddr *) &servAddr2, &length2) == -1) {
+        fprintf(stderr, "Error: %s\n", strerror(errno));
+    }
+    else {
+        int newPort = (int) ntohs(servAddr2.sin_port);
+        printf("data socket bound to port %d\n", newPort);
+
+        // Listen and Accept connections
+        if (listen(socketFd2, 0) < 0) {
+            fprintf(stderr, "Error: %s\n", strerror(errno));
+            exit(1);
+        }
+
+        char sendPort[max];
+        if (sprintf(sendPort, "%d", newPort) < 0) {
+            printf("Failed to convert port number %d to string\n", newPort);
+        }
+        char send[max];
+        strcpy(send, "A");
+        strcat(send, sendPort);
+        printf("sending %s\n", send);
+        write(listenFd, send, strlen(send));
+
+        int listenFd2, length2;
+
+        printf("Child %d: listening on data socket\n", getpid());
+        while(1) {
+            if ((listenFd2 = accept(socketFd2,
+                                    (struct sockaddr *) &clientAddr,
+                                    &length2)) < 0) {
+                fprintf(stderr, "Error: %s\n",
+                        strerror(errno));
+                exit(1);
+            }
+
+            write(listenFd2, "A", 1);
+            printf("Child %d: Sending acknowledgement -> %s\n", getpid(), send);
+
+            if (debug) {
+                printf("Child %d: Accepted connection from host %s on the data socket with descriptor %d\n",
+                       getpid(),
+                       hostName, listenFd2);
+                printf("Data socket port number on the client end is %d\n", ntohs(clientAddr -> sin_port));
+                printf("Child %d: Sending positive acknowledgement\n", getpid());
+            }
+
+            close(listenFd2);
+            break;
+        }
+
+    }
+}
+
+bool isNumber(const char argv[]) {
+    for (int i = 0; i < strlen(argv); i++) {
+        if (!isdigit(argv[i]))
+            return false;
+    }
+    return true;
+}
+
+void setDebug() {
+    debug = true;
+    printf("Parent: Debug output enabled.\n");
 }
