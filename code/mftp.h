@@ -22,5 +22,6 @@
 void parse(char*, char*, char*);
 int isDirectory (char* path);
 bool setDebug(int i);
+//void lsCommand(int outputFd, int who, bool debug);
 
 #endif //FINAL_PROJECT_ALL_H

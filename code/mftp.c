@@ -6,6 +6,7 @@ void show(char* pathName);
 //void parse(char*, char*, char*);
 void cdCommand(char*);
 void rcdCommand(char*, int sockfd);
+void rlsCommand(int sockfd);
 void callCommands(char *, int sockfd);
 void exitCommand(int sockfd);
 void serverCommand(int, char*);
@@ -110,9 +111,11 @@ void callCommands(char *buffer, int socketfd) {
         cdCommand(pathName);
     }
     else if (strcmp("rls", buffer) == 0) {
-        serverCommand(socketfd, buffer);
-        if (debug)
+        if (debug) {
             printf("--- Command string = '%s'\n", buffer);
+            printf("Executing remote ls command\n");
+        }
+        serverCommand(socketfd, buffer);
     }
     else if (strncmp("rcd", buffer, 3) == 0) {
         if (strlen(buffer) == 3) {
@@ -156,11 +159,14 @@ void rcdCommand(char* path, int socketFd) {
     write(socketFd, serverCommand, strlen(serverCommand));
 
     printf("Awaiting server response\n");
+    bzero(response, max);
     while ((result = read(socketFd, response, max)) > 0) {
-        printf("Received server response '%s'\n", response);
         if (strncmp(response, "A", 1) == 0 && debug) {
+            printf("Received server response 'A'\n");
             printf("Changed remote directory to %s\n", path);
         }
+        else
+            printf("Received server response '%s'\n", response);
         break;
     }
 }
@@ -226,26 +232,60 @@ void serverCommand(int socketFd, char* myCommand) {
     }
 
     if (strcmp("rls", myCommand) == 0) {
-        printf("got rls command\n");
+        rlsCommand(socketfd2);
     }
-//    else {
-//        char command[5];
-//        char path[max];
-//        parse(myCommand, command, path);
-//
-//        if (strncmp(command, "rcd", 3) == 0) {
-//            char serverCommand[strlen(path) + 1];
-//            strcpy(serverCommand, "C");
-//            strncat(serverCommand, path, strlen(path));
-//            write(socketfd2, serverCommand, strlen(serverCommand));
-//        } else {
-//            printf("got %s command\n", myCommand);
-//        }
-//    }
-
+    else {
+        printf("got %s command\n", myCommand);
+    }
     close(socketfd2);
 }
 
+void rlsCommand(int socketFd) {
+    write(socketFd, "L", 1);
+
+    if (debug)
+        printf("Awaiting server response\n");
+
+    int result;
+    char buffer[2];
+    while ((result = read(socketFd, buffer, 2)) > 0) {
+        if(strncmp(buffer, "A", 1) == 0 && debug) {
+            printf("Received server response: 'A'\n");
+            printf("Displaying response from server\n");
+        }
+        break;
+    }
+
+    if (debug)
+        printf("Displaying data from server & forking to 'more'...\n");
+
+    int stdIN = dup(STDIN_FILENO);
+
+    int pid = fork();
+    if (pid != 0) {
+        if (debug)
+            printf("Waiting for child process %d to complete execution of more\n", pid);
+        wait(&pid);
+
+        dup2(stdIN, STDIN_FILENO);
+        close(stdIN);
+
+        if (debug)
+            printf("Data display & more command completed.\n");
+        return;
+    }
+    else {
+        dup2(socketFd, STDIN_FILENO);
+        close(socketFd);
+
+        char *arg = "-20";
+        char *command = "more";
+        if (execlp(command, command, arg, NULL) < 0) {
+            printf("%s\n", strerror(errno));
+        }
+        printf("Error occurred during 'execvp'\n");
+    }
+}
 
 void cdCommand(char *path) {
     if (isDirectory(path)) {
@@ -263,12 +303,20 @@ void cdCommand(char *path) {
 }
 
 void lsCommand() {
+    int stdIN = dup(STDIN_FILENO);
+    int stdOUT = dup(STDOUT_FILENO);
     int pid = fork();
 
     if (pid != 0) {
         if (debug)
             printf("Client parent waiting on child process %d to run ls locally\n", pid);
         wait(&pid);
+
+        dup2(stdIN, STDIN_FILENO);
+        dup2(stdOUT, STDOUT_FILENO);
+        close(stdIN);
+        close(stdOUT);
+
         if (debug)
             printf("Client parent continuing\n");
         return;

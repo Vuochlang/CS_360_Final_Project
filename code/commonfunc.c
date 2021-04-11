@@ -1,5 +1,32 @@
 #include "mftp.h"
 
+//void lsCommand(int outputFd, int isClient, bool debug) {
+//    int pid = fork();
+//
+//    if (pid != 0) {
+//        int stdOut = dup(STDOUT_FILENO);
+//
+//        if (debug && isClient)
+//            printf("Client parent waiting on child process %d to run ls locally\n", pid);
+//        wait(&pid);
+//
+//        dup2(stdOut, STDOUT_FILENO);
+//
+//        if (debug && isClient)
+//            printf("Client parent continuing\n");
+//        return;
+//    }
+//    else {
+//        dup2(outputFd, STDOUT_FILENO);  // redirect output to the given fd
+//        char *arg = "-l";
+//        char *command = "ls";
+//        if (execlp(command, command, arg, NULL) < 0) {
+//            printf("%s\n", strerror(errno));
+//        }
+//        printf("Error occurred during 'execvp'\n");
+//    }
+//}
+
 void parse(char *buffer, char *command, char *path) {
     char *temp;
     int i = 0;
