@@ -18,10 +18,11 @@
 #include <assert.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 
 void parse(char*, char*, char*);
 int isDirectory (char* path);
 bool setDebug(int i);
-//void lsCommand(int outputFd, int who, bool debug);
+int isReg (char* path);
 
 #endif //FINAL_PROJECT_ALL_H

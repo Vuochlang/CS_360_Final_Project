@@ -11,6 +11,8 @@ void callCommands(char *, int sockfd);
 void exitCommand(int sockfd);
 void serverCommand(int, char*);
 
+void showCommand(int socketFd);
+
 bool debug = false;
 char portNumber[20];
 char hostAddress[20];
@@ -133,9 +135,22 @@ void callCommands(char *buffer, int socketfd) {
             printf("--- Command string = '%s' with parameter = '%s'\n", command, pathName);
     }
     else if (strncmp("show", buffer, 4) == 0) {
-        parse(buffer, command, pathName);
-        if (debug)
-            printf("--- Command string = '%s' with parameter = '%s'\n", command, pathName);
+        if (strlen(buffer) == 4) {
+            printf("Missing parameter for 'show' command - ignored\n");
+        }
+        else {
+            char temp[strlen(buffer)];
+            strcpy(temp, buffer);
+            parse(temp, command, pathName);
+            if (debug) {
+                printf("--- Command string = '%s' with parameter = '%s'\n",
+                       command,
+                       pathName);
+                printf("Showing file %s\n", pathName);
+            }
+            printf("buffer = <%s>\n", buffer);
+            serverCommand(socketfd, buffer);
+        }
     }
     else if (strncmp("put", buffer, 3) == 0) {
         parse(buffer, command, pathName);
@@ -234,6 +249,40 @@ void serverCommand(int socketFd, char* myCommand) {
     if (strcmp("rls", myCommand) == 0) {
         rlsCommand(socketfd2);
     }
+    else if(strncmp("show", myCommand, 4) == 0) {
+        char pathName[strlen(myCommand - 4)];
+        char command[4];
+        parse(myCommand, command, pathName);
+
+        char sendToServer[strlen(pathName) + 1];
+        strcpy(sendToServer, "G");
+        strncat(sendToServer, pathName, strlen(pathName));
+
+        write(socketfd2, sendToServer, strlen(sendToServer));
+
+        bzero(buffer, max);
+        if (debug)
+            printf("Displaying data from server & forking to 'more'...\n");
+
+        int stdIN = dup(STDIN_FILENO);
+
+        int pid = fork();
+        if (pid != 0) {
+            if (debug)
+                printf("Waiting for child process %d to complete execution of more\n", pid);
+            wait(&pid);
+
+            dup2(stdIN, STDIN_FILENO);
+            close(stdIN);
+
+            if (debug)
+                printf("Data display & more command completed.\n");
+            return;
+        }
+        else {
+            showCommand(socketfd2);
+        }
+    }
     else {
         printf("got %s command\n", myCommand);
     }
@@ -275,16 +324,29 @@ void rlsCommand(int socketFd) {
         return;
     }
     else {
-        dup2(socketFd, STDIN_FILENO);
-        close(socketFd);
-
-        char *arg = "-20";
-        char *command = "more";
-        if (execlp(command, command, arg, NULL) < 0) {
-            printf("%s\n", strerror(errno));
-        }
-        printf("Error occurred during 'execvp'\n");
+        showCommand(socketFd);
+//        dup2(socketFd, STDIN_FILENO);
+//        close(socketFd);
+//
+//        char *arg = "-20";
+//        char *command = "more";
+//        if (execlp(command, command, arg, NULL) < 0) {
+//            printf("%s\n", strerror(errno));
+//        }
+//        printf("Error occurred during 'execvp'\n");
     }
+}
+
+void showCommand(int socketFd) {
+    dup2(socketFd, STDIN_FILENO);
+    close(socketFd);
+
+    char *arg = "-20";
+    char *command = "more";
+    if (execlp(command, command, arg, NULL) < 0) {
+        printf("%s\n", strerror(errno));
+    }
+    printf("Error occurred during 'execvp'\n");
 }
 
 void cdCommand(char *path) {
