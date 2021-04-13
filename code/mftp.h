@@ -19,10 +19,12 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <signal.h>
 
 void parse(char*, char*, char*);
 int isDirectory (char* path);
 bool setDebug(int i);
 int isReg (char* path);
+bool isFileExist (char *filename);
 
 #endif //FINAL_PROJECT_ALL_H
