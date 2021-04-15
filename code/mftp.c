@@ -8,13 +8,13 @@ void rcdCommand(char*, int sockfd);
 void rlsCommand(int sockfd);
 void callCommands(char *, int sockfd);
 void exitCommand(int sockfd);
-void serverCommand(int, char*);
+void serverCommand(int, char*, char*);
 void getCommand(int, char*);
 void getCommand(int, char*);
 void putCommand(int, char*);
 
 void showResult(int socketFd);
-void parsePrint(char*, char*);
+void parsePrint(char*, char*, char*);
 void ctrlCHandler();
 
 bool debug = false;
@@ -85,29 +85,30 @@ void createClient() {
     while (stillRunning) {
         write(1, prompt, strlen(prompt));
 
-//        // read from command line
-//        while ((readResult = read(0, buffer, max)) > 0) {
-//            callCommands(buffer, socketfd);
-//            bzero(buffer, max); // empty buffer
-//            write(1, prompt, strlen(prompt));  // print the prompt
-//        }
         // read from command line
         while (fgets(buffer, max, stdin) != NULL) {
-            callCommands(buffer, socketfd);
+            strcpy(messageRead, buffer);
+            callCommands(messageRead, socketfd);
             bzero(buffer, max); // empty buffer
             write(1, prompt, strlen(prompt));  // print the prompt
         }
-        puts("Got NULL\n");
+        if(debug)
+            printf("Ctrl-D encountered, sending notice to server, goodbye\n");
+        write(socketfd, "E", 1);
+        close(socketfd);
+        exit(0);
     }
 }
 
 void callCommands(char *buffer, int socketfd) {
     char command[max];
     char pathName[max];
-    int readResult;
+//    int readResult;
 
     // eliminate the new line
     buffer[strlen(buffer) - 1] = '\0';
+
+    bzero(pathName, max);
 
     if (strncmp("exit", buffer, 4) == 0) {
         if (debug)
@@ -124,7 +125,7 @@ void callCommands(char *buffer, int socketfd) {
     }
     else if (strncmp("cd", buffer, 2) == 0) {
         if (debug)
-            parsePrint(buffer, pathName);
+            parsePrint(buffer, command, pathName);
         cdCommand(pathName);
     }
     else if (strcmp("rls", buffer) == 0) {
@@ -132,7 +133,8 @@ void callCommands(char *buffer, int socketfd) {
             printf("--- Command string = '%s'\n", buffer);
             printf("Executing remote ls command\n");
         }
-        serverCommand(socketfd, buffer);
+        char *path = NULL;
+        serverCommand(socketfd, buffer, path);
     }
     else if (strncmp("rcd", buffer, 3) == 0) {
         if (strlen(buffer) == 3) {
@@ -140,7 +142,7 @@ void callCommands(char *buffer, int socketfd) {
         }
         else {
             if (debug)
-                parsePrint(buffer, pathName);
+                parsePrint(buffer, command, pathName);
             rcdCommand(pathName, socketfd);
         }
     }
@@ -150,12 +152,12 @@ void callCommands(char *buffer, int socketfd) {
         }
         else {
             if (debug)
-                parsePrint(buffer, pathName);
+                parsePrint(buffer, command, pathName);
 
             if (isFileExist(pathName))
                 printf("Open/creating local file: File exists\n");
-//            else
-//                serverCommand(socketfd, buffer);
+            else
+                serverCommand(socketfd, command, pathName);
         }
     }
     else if (strncmp("show", buffer, 4) == 0) {
@@ -163,8 +165,8 @@ void callCommands(char *buffer, int socketfd) {
             printf("Missing parameter for 'show' command - ignored\n");
         else {
             if (debug)
-                parsePrint(buffer, pathName);
-            serverCommand(socketfd, buffer);
+                parsePrint(buffer, command, pathName);
+            serverCommand(socketfd, command, pathName);
         }
     }
     else if (strncmp("put", buffer, 3) == 0) {
@@ -173,19 +175,31 @@ void callCommands(char *buffer, int socketfd) {
         }
         else {
             if (debug)
-                parsePrint(buffer, pathName);
-//            serverCommand(socketfd, buffer);
+                parsePrint(buffer, command, pathName);
+            if (!isFileExist(pathName)) {
+                printf("Local file '%s' does not exist - ignored\n", pathName);
+                return;
+            }
+            else if (isDirectory(pathName)) {
+                printf("Local file '%s' is a Directory - ignored\n", pathName);
+                return;
+            }
+            else if (isReg(pathName)) {
+                serverCommand(socketfd, command, pathName);
+            }
+            else {
+                printf("Does not have permission to access file '%s' - ignored\n", pathName);
+                return;
+            }
         }
     }
     else {
         printf("--- Command '%s' is unknown - ignored\n", buffer);
     }
-    bzero(pathName, max);
-    bzero(buffer, max);
 }
 
-void parsePrint(char* clientCommand, char* pathName) {
-    char command[max];
+void parsePrint(char* clientCommand, char* command, char* pathName) {
+//    char command[max];
     char temp[strlen(clientCommand)];
     strcpy(temp, clientCommand);
     parse(temp, command, pathName);
@@ -202,30 +216,25 @@ void parsePrint(char* clientCommand, char* pathName) {
 }
 
 void rcdCommand(char* path, int socketFd) {
-    char serverCommand[strlen(path) + 1];
-    char response[max];
+    char sendCommand[strlen(path) + 1];
+//    char response[max];
     int result;
 
-    strcpy(serverCommand, "C");
-    strncat(serverCommand, path, strlen(path));
-    write(socketFd, serverCommand, strlen(serverCommand));
+    strcpy(sendCommand, "C");
+    strncat(sendCommand, path, strlen(path));
+    write(socketFd, sendCommand, strlen(sendCommand));
 
     printf("Awaiting server response\n");
-    bzero(response, max);
-    while ((result = read(socketFd, response, max)) > 0) {
-        if (strncmp(response, "A", 1) == 0 && debug) {
-            printf("Received server response 'A'\n");
-            printf("Changed remote directory to %s\n", path);
-        }
-        else if (strncmp(response, "E", 1) == 0) {
-            char *temp = response + 1;
-            printf("Received server response: '%s'\n", temp);
-        }
-        break;
-    }
+//    bzero(response, max);
+
+    if (stopHere(socketFd))
+        return;
+
+    if (debug)
+        printf("Changed remote directory to %s\n", path);
 }
 
-void serverCommand(int socketFd, char* myCommand) {
+void serverCommand(int socketFd, char* myCommand, char* myPath) {
     int result;
     char buffer[max];
     char portString[16];
@@ -239,6 +248,7 @@ void serverCommand(int socketFd, char* myCommand) {
         printf("Received server response '%s'\n", portString);
         break;
     }
+    bzero(buffer, max);
 
     // split and get port number
     char* temp = portString + 1;
@@ -281,77 +291,57 @@ void serverCommand(int socketFd, char* myCommand) {
         rlsCommand(socketfd2);
     }
     else if(strncmp("show", myCommand, 4) == 0) {
-        showCommand(socketfd2, myCommand);
+        showCommand(socketfd2, myPath);
     }
     else if(strncmp("get", myCommand, 3) == 0) {
-        getCommand(socketfd2, myCommand);
+        getCommand(socketfd2, myPath);
     }
     else if(strncmp("put", myCommand, 3) == 0) {
-        putCommand(socketfd2, myCommand);
+        putCommand(socketfd2, myPath);
     }
     close(socketfd2);
 }
 
-void putCommand(int sockfd2, char* myCommand) {
-    char pathName[strlen(myCommand - 4)];
-    char command[4];
-    parse(myCommand, command, pathName);
+void putCommand(int sockfd2, char* pathName) {
+//    char pathName[strlen(myCommand - 4)];
+//    char command[4];
+//    parse(myCommand, command, pathName);
 
-    if (!isFileExist(pathName)) {
-        write(sockfd2, "E", 1);
-        printf("Local file '%s' does not exist - ignored\n", pathName);
+    char sendToServer[strlen(pathName) + 1];
+    strcpy(sendToServer, "P");
+    strncat(sendToServer, pathName, strlen(pathName));
+    write(sockfd2, sendToServer, strlen(sendToServer));
+    printf("Awaiting server response\n");
+
+    if (stopHere(sockfd2))
         return;
+
+    printf("Sending file content to the server\n");
+
+    int file = open(pathName, O_RDONLY);
+    if (file < 0) {
+        fprintf(stderr, "Error: %s\n", strerror(errno));
     }
-    else if (isDirectory(pathName)) {
-        write(sockfd2, "E", 1);
-        printf("Local file '%s' is a Directory - ignored\n", pathName);
-        return;
+
+    int fileSize = lseek(file, 0, SEEK_END);
+    if (fileSize < 0) {
+        fprintf(stderr, "Error: %s\n", strerror(errno));
     }
-    else if (isReg(pathName)){
-        char* message = "P";
-        strcat(message, pathName);
-        write(sockfd2, message, strlen(message));
 
-        char buffer[max];
-        int result;
-        while ((result = read(sockfd2, buffer, max)) > 0) {
-            if (strncmp(buffer, "A", 1) == 0) {
-                printf("Received server response: 'A'\n");
-                printf("Sending file content to the server\n");
-                break;
-            }
-            else if (strncmp(buffer, "E", 1) == 0) {
-                char *temp = buffer + 1;
-                printf("Received server response: '%s'\n", temp);
-                return;
-            }
-        }
+    lseek(file, 0, SEEK_SET);
 
-        int file = open(pathName, O_RDWR);
-        if (file < 0) {
-            fprintf(stderr, "Error: %s\n", strerror(errno));
-        }
-
-        int fileSize = lseek(file, 0, SEEK_END);
-        if (fileSize < 0) {
-            fprintf(stderr, "Error: %s\n", strerror(errno));
-        }
-
-        lseek(file, 0, SEEK_SET);
-
-        char fileContent[fileSize];
-        if (read(file, fileContent, fileSize) < 0) {
-            printf("Child %d: %s\n", getpid(), strerror(errno));
-        }
-        write(sockfd2, fileContent, fileSize);
-        close(file);
+    char fileContent[fileSize];
+    if (read(file, fileContent, fileSize) < 0) {
+        printf("Child %d: %s\n", getpid(), strerror(errno));
     }
+    write(sockfd2, fileContent, fileSize);
+    close(file);
 }
 
-void getCommand(int socketfd2, char* myCommand) {
-    char pathName[strlen(myCommand - 4)];
-    char command[4];
-    parse(myCommand, command, pathName);
+void getCommand(int socketfd2, char* pathName) {
+//    char pathName[strlen(myCommand - 4)];
+//    char command[4];
+//    parse(myCommand, command, pathName);
 
     char sendToServer[strlen(pathName) + 1];
     strcpy(sendToServer, "G");
@@ -360,20 +350,10 @@ void getCommand(int socketfd2, char* myCommand) {
     write(socketfd2, sendToServer, strlen(sendToServer));
     printf("Awaiting server response\n");
 
-    char buffer[max];
-    int result;
-    while ((result = read(socketfd2, buffer, max)) > 0) {
-        if (strncmp(buffer, "A", 1) == 0) {
-            printf("Received server response: 'A'\n");
-            printf("Displaying response from server\n");
-            break;
-        }
-        else if (strncmp(buffer, "E", 1) == 0) {
-            char *temp = buffer + 1;
-            printf("Received server response: '%s'\n", temp);
-            return;
-        }
-    }
+    if (stopHere(socketfd2))
+        return;
+
+    printf("Displaying response from server\n");
 
     FILE* fp = fopen(pathName, "w");
     if (fp == NULL) {
@@ -382,6 +362,7 @@ void getCommand(int socketfd2, char* myCommand) {
     }
 
     char readBuffer[512];
+    int result;
     while ((result = read(socketfd2, readBuffer, 512)) > 0) {
         printf("Read %d bytes from server, writing to local file\n", result);
         fputs(readBuffer, fp);
@@ -389,10 +370,10 @@ void getCommand(int socketfd2, char* myCommand) {
     fclose(fp);
 }
 
-void showCommand(int socketfd2, char* myCommand) {
-    char pathName[strlen(myCommand - 4)];
-    char command[4];
-    parse(myCommand, command, pathName);
+void showCommand(int socketfd2, char* pathName) {
+//    char pathName[strlen(myCommand - 4)];
+//    char command[4];
+//    parse(myCommand, command, pathName);
 
     char sendToServer[strlen(pathName) + 1];
     strcpy(sendToServer, "G");
@@ -402,25 +383,15 @@ void showCommand(int socketfd2, char* myCommand) {
     if (debug)
         printf("Awaiting server response\n");
 
-    char readBuffer[max];
-    int result;
-    while ((result = read(socketfd2, readBuffer, max)) > 0) {
-        if (strcmp(readBuffer, "A") == 0) {
-            printf("Received server response: 'A'\n");
-            printf("Displaying response from server\n");
-            break;
-        }
-        else if (strncmp(readBuffer, "E", 1) == 0) {
-            char *temp = readBuffer + 1;
-            printf("Received server response: '%s'\n", temp);
-            return;
-        }
-    }
+    if (stopHere(socketfd2))
+        return;
 
     if (debug)
         printf("Displaying data from server & forking to 'more'...\n");
 
     int stdIN = dup(STDIN_FILENO);
+    int sockfd = dup(socketfd2);
+
     int pid = fork();
     if (pid != 0) {
         if (debug)
@@ -429,6 +400,8 @@ void showCommand(int socketfd2, char* myCommand) {
 
         dup2(stdIN, STDIN_FILENO);
         close(stdIN);
+//        dup2(sockfd, socketfd2);
+//        close(sockfd);
 
         if (debug)
             printf("Data display & more command completed.\n");
@@ -445,25 +418,14 @@ void rlsCommand(int socketFd) {
     if (debug)
         printf("Awaiting server response\n");
 
-    int result;
-    char buffer[2];
-    while ((result = read(socketFd, buffer, 2)) > 0) {
-        if (strncmp(buffer, "A", 1) == 0) {
-            printf("Received server response: 'A'\n");
-            printf("Displaying response from server\n");
-            break;
-        }
-        else if (strncmp(buffer, "E", 1) == 0) {
-            char *temp = buffer + 1;
-            printf("Received server response: '%s'\n", temp);
-            return;
-        }
-    }
+    if (stopHere(socketFd))
+        return;
 
     if (debug)
         printf("Displaying data from server & forking to 'more'...\n");
 
     int stdIN = dup(STDIN_FILENO);
+    int sockfd = dup(socketFd);
 
     int pid = fork();
     if (pid != 0) {
@@ -473,6 +435,8 @@ void rlsCommand(int socketFd) {
 
         dup2(stdIN, STDIN_FILENO);
         close(stdIN);
+//        dup2(sockfd, socketFd);
+//        close(sockfd);
 
         if (debug)
             printf("Data display & more command completed.\n");

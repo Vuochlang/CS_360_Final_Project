@@ -26,5 +26,6 @@ int isDirectory (char* path);
 bool setDebug(int i);
 int isReg (char* path);
 bool isFileExist (char *filename);
+bool stopHere(int socketfd);
 
 #endif //FINAL_PROJECT_ALL_H
