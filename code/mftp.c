@@ -12,17 +12,13 @@ void serverCommand(int, char*, char*);
 void getCommand(int, char*);
 void getCommand(int, char*);
 void putCommand(int, char*);
-
 void showResult(int socketFd);
 void parsePrint(char*, char*, char*);
-void ctrlCHandler();
 
 bool debug = false;
 char portNumber[20];
 char hostAddress[20];
 int max = 200;
-bool stillRunning = true;
-int serverSocketFd;
 
 int main(int argc, char* argv[]) {
     if (argc == 4 && strcmp(argv[1], "-d") == 0) {
@@ -73,28 +69,24 @@ void createClient() {
         fprintf(stderr, "Error: %s\n", strerror(errno));
         exit(1);
     }
-    serverSocketFd = socketfd;
-    printf("Connected to server %s\n", hostAddress);
+    if (debug)
+        printf("Connected to server %s\n", hostAddress);
 
     int readResult = 0;
     bool isExit = false;
     char prompt[] = "MFTP> ";
 
-    signal(SIGINT, ctrlCHandler);
-
-    while (stillRunning) {
+    while (1) {
         write(1, prompt, strlen(prompt));
 
         // read from command line
         while (fgets(buffer, max, stdin) != NULL) {
             strcpy(messageRead, buffer);
             callCommands(messageRead, socketfd);
-            bzero(buffer, max); // empty buffer
+
             write(1, prompt, strlen(prompt));  // print the prompt
+            memset(buffer, 0, sizeof(buffer));
         }
-        if(debug)
-            printf("Ctrl-D encountered, sending notice to server, goodbye\n");
-        write(socketfd, "E", 1);
         close(socketfd);
         exit(0);
     }
@@ -103,12 +95,11 @@ void createClient() {
 void callCommands(char *buffer, int socketfd) {
     char command[max];
     char pathName[max];
-//    int readResult;
 
     // eliminate the new line
     buffer[strlen(buffer) - 1] = '\0';
 
-    bzero(pathName, max);
+    memset(pathName, 0, sizeof(pathName));
 
     if (strncmp("exit", buffer, 4) == 0) {
         if (debug)
@@ -124,8 +115,7 @@ void callCommands(char *buffer, int socketfd) {
             printf("--- ls execution completed\n");
     }
     else if (strncmp("cd", buffer, 2) == 0) {
-        if (debug)
-            parsePrint(buffer, command, pathName);
+        parsePrint(buffer, command, pathName);
         cdCommand(pathName);
     }
     else if (strcmp("rls", buffer) == 0) {
@@ -141,8 +131,7 @@ void callCommands(char *buffer, int socketfd) {
             printf("Missing parameter for 'rcd' command - ignored\n");
         }
         else {
-            if (debug)
-                parsePrint(buffer, command, pathName);
+            parsePrint(buffer, command, pathName);
             rcdCommand(pathName, socketfd);
         }
     }
@@ -151,9 +140,7 @@ void callCommands(char *buffer, int socketfd) {
             printf("Missing parameter for 'get' command - ignored\n");
         }
         else {
-            if (debug)
-                parsePrint(buffer, command, pathName);
-
+            parsePrint(buffer, command, pathName);
             if (isFileExist(pathName))
                 printf("Open/creating local file: File exists\n");
             else
@@ -164,8 +151,7 @@ void callCommands(char *buffer, int socketfd) {
         if (strlen(buffer) == 4)
             printf("Missing parameter for 'show' command - ignored\n");
         else {
-            if (debug)
-                parsePrint(buffer, command, pathName);
+            parsePrint(buffer, command, pathName);
             serverCommand(socketfd, command, pathName);
         }
     }
@@ -174,8 +160,7 @@ void callCommands(char *buffer, int socketfd) {
             printf("Missing parameter for 'put' command - ignored\n");
         }
         else {
-            if (debug)
-                parsePrint(buffer, command, pathName);
+            parsePrint(buffer, command, pathName);
             if (!isFileExist(pathName)) {
                 printf("Local file '%s' does not exist - ignored\n", pathName);
                 return;
@@ -199,35 +184,43 @@ void callCommands(char *buffer, int socketfd) {
 }
 
 void parsePrint(char* clientCommand, char* command, char* pathName) {
-//    char command[max];
     char temp[strlen(clientCommand)];
     strcpy(temp, clientCommand);
     parse(temp, command, pathName);
 
-    printf("--- Command string = '%s' with parameter = '%s'\n", command, pathName);
-    if (strcmp(command, "show") == 0)
-        printf("Showing file %s\n", pathName);
-    else if (strcmp(command, "get") == 0)
-        printf("Getting file %s from server and storing to local directory\n", pathName);
-    else if (strcmp(command, "rcd") == 0)
-        printf("Changing server current working directory to '%s'\n", pathName);
-    else if (strcmp(command, "put") == 0)
+    if (debug)
+        printf("--- Command string = '%s' with parameter = '%s'\n", command, pathName);
+
+    if (strcmp(command, "show") == 0) {
+        if (debug)
+            printf("Showing file %s\n", pathName);
+    }
+    else if (strcmp(command, "get") == 0) {
+        if (debug)
+            printf("Getting file %s from server and storing to local directory\n", pathName);
+    }
+    else if (strcmp(command, "cd") == 0) {
+        if (debug)
+            printf("Changing local working directory to '%s'\n", pathName);
+    }
+    else if (strcmp(command, "rcd") == 0) {
+        if (debug)
+            printf("Changing server current working directory to '%s'\n", pathName);
+    }
+    else if (strcmp(command, "put") == 0) {
+        if (debug)
         printf("Transfer local file %s to server current working directory\n", pathName);
+    }
 }
 
 void rcdCommand(char* path, int socketFd) {
     char sendCommand[strlen(path) + 1];
-//    char response[max];
-    int result;
 
     strcpy(sendCommand, "C");
     strncat(sendCommand, path, strlen(path));
     write(socketFd, sendCommand, strlen(sendCommand));
 
-    printf("Awaiting server response\n");
-//    bzero(response, max);
-
-    if (stopHere(socketFd))
+    if (stopHere(socketFd, debug))
         return;
 
     if (debug)
@@ -240,21 +233,24 @@ void serverCommand(int socketFd, char* myCommand, char* myPath) {
     char portString[16];
 
     write(socketFd, "D", 1);
-    printf("Sent D command to server\n");
-
-    printf("Awaiting server response\n");
+    if (debug) {
+        printf("Sent D command to server\n");
+        printf("Awaiting server response\n");
+    }
     while ((result = read(socketFd, buffer, max)) > 0) {
         strncpy(portString, buffer, result);
-        printf("Received server response '%s'\n", portString);
+        if (debug)
+            printf("Received server response '%s'\n", portString);
         break;
     }
-    bzero(buffer, max);
+    memset(buffer, 0, sizeof(buffer));
 
     // split and get port number
     char* temp = portString + 1;
     char newPortNumber[6];
     strncpy(newPortNumber, temp, 6);
-    printf("Obtained port number %s from server\n", newPortNumber);
+    if (debug)
+        printf("Obtained port number %s from server\n", newPortNumber);
 
     int socketfd2;
     struct addrinfo hints, *actualdata;
@@ -303,20 +299,13 @@ void serverCommand(int socketFd, char* myCommand, char* myPath) {
 }
 
 void putCommand(int sockfd2, char* pathName) {
-//    char pathName[strlen(myCommand - 4)];
-//    char command[4];
-//    parse(myCommand, command, pathName);
-
     char sendToServer[strlen(pathName) + 1];
     strcpy(sendToServer, "P");
     strncat(sendToServer, pathName, strlen(pathName));
     write(sockfd2, sendToServer, strlen(sendToServer));
-    printf("Awaiting server response\n");
 
-    if (stopHere(sockfd2))
+    if (stopHere(sockfd2, debug))
         return;
-
-    printf("Sending file content to the server\n");
 
     int file = open(pathName, O_RDONLY);
     if (file < 0) {
@@ -332,65 +321,61 @@ void putCommand(int sockfd2, char* pathName) {
 
     char fileContent[fileSize];
     if (read(file, fileContent, fileSize) < 0) {
-        printf("Child %d: %s\n", getpid(), strerror(errno));
+        fprintf(stderr, "Error: %s\n", strerror(errno));
     }
     write(sockfd2, fileContent, fileSize);
+    if (debug) {
+        printf("Sending file content to the server\n");
+        printf("--- 'put' command completed\n");
+    }
     close(file);
 }
 
 void getCommand(int socketfd2, char* pathName) {
-//    char pathName[strlen(myCommand - 4)];
-//    char command[4];
-//    parse(myCommand, command, pathName);
 
     char sendToServer[strlen(pathName) + 1];
     strcpy(sendToServer, "G");
     strncat(sendToServer, pathName, strlen(pathName));
 
     write(socketfd2, sendToServer, strlen(sendToServer));
-    printf("Awaiting server response\n");
 
-    if (stopHere(socketfd2))
+    if (stopHere(socketfd2, debug))
         return;
 
-    printf("Displaying response from server\n");
+    if (debug)
+        printf("Displaying response from server\n");
 
-    FILE* fp = fopen(pathName, "w");
-    if (fp == NULL) {
+    int file = open(pathName, O_RDWR | O_CREAT, S_IRWXU);
+    if (file < 0) {
         fprintf(stderr, "Error: %s\n", strerror(errno));
-        return;
     }
 
     char readBuffer[512];
     int result;
     while ((result = read(socketfd2, readBuffer, 512)) > 0) {
-        printf("Read %d bytes from server, writing to local file\n", result);
-        fputs(readBuffer, fp);
+        if (debug)
+            printf("Read %d bytes from server, writing to local file\n", result);
+        write(file, readBuffer, result);
     }
-    fclose(fp);
+    close(file);
+    if (debug)
+        printf("--- 'get' command completed\n");
 }
 
 void showCommand(int socketfd2, char* pathName) {
-//    char pathName[strlen(myCommand - 4)];
-//    char command[4];
-//    parse(myCommand, command, pathName);
-
     char sendToServer[strlen(pathName) + 1];
     strcpy(sendToServer, "G");
     strncat(sendToServer, pathName, strlen(pathName));
 
     write(socketfd2, sendToServer, strlen(sendToServer));
-    if (debug)
-        printf("Awaiting server response\n");
 
-    if (stopHere(socketfd2))
+    if (stopHere(socketfd2, debug))
         return;
 
     if (debug)
         printf("Displaying data from server & forking to 'more'...\n");
 
     int stdIN = dup(STDIN_FILENO);
-    int sockfd = dup(socketfd2);
 
     int pid = fork();
     if (pid != 0) {
@@ -400,8 +385,6 @@ void showCommand(int socketfd2, char* pathName) {
 
         dup2(stdIN, STDIN_FILENO);
         close(stdIN);
-//        dup2(sockfd, socketfd2);
-//        close(sockfd);
 
         if (debug)
             printf("Data display & more command completed.\n");
@@ -415,17 +398,13 @@ void showCommand(int socketfd2, char* pathName) {
 void rlsCommand(int socketFd) {
     write(socketFd, "L", 1);
 
-    if (debug)
-        printf("Awaiting server response\n");
-
-    if (stopHere(socketFd))
+    if (stopHere(socketFd, debug))
         return;
 
     if (debug)
         printf("Displaying data from server & forking to 'more'...\n");
 
     int stdIN = dup(STDIN_FILENO);
-    int sockfd = dup(socketFd);
 
     int pid = fork();
     if (pid != 0) {
@@ -435,8 +414,6 @@ void rlsCommand(int socketFd) {
 
         dup2(stdIN, STDIN_FILENO);
         close(stdIN);
-//        dup2(sockfd, socketFd);
-//        close(sockfd);
 
         if (debug)
             printf("Data display & more command completed.\n");
@@ -553,22 +530,13 @@ void exitCommand(int socketFd) {
         printf("Awaiting server response\n");
 
     while ((readResult = read(socketFd, buffer, 2)) > 0) {
-        if (strcmp(buffer, "A") == 0 && debug) {
-            printf("Received server response: '%s'\n", buffer);
-            printf("--- Client exiting normally\n");
+        if (strcmp(buffer, "A") == 0) {
+            if (debug) {
+                printf("Received server response: '%s'\n", buffer);
+                printf("--- Client exiting normally\n");
+            }
             return;
         }
         return;
     }
-}
-
-void ctrlCHandler() {
-    stillRunning = false;
-    printf("\n");
-    if(debug)
-        printf("Ctrl-C encountered, sending notice to server, goodbye\n");
-    write(serverSocketFd, "E", 1);
-    signal (SIGINT, SIG_DFL);
-    close(serverSocketFd);
-    exit(0);
 }
