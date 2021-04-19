@@ -1,6 +1,3 @@
-#ifndef FINAL_PROJECT_ALL_H
-#define FINAL_PROJECT_ALL_H
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -27,5 +24,3 @@ bool setDebug(int i);
 int isReg (char* path);
 bool isFileExist (char *filename);
 bool canRead(char* path);
-
-#endif //FINAL_PROJECT_ALL_H
