@@ -9,6 +9,10 @@
 <p> "The programs will utilize the Unix TCP/IP sockets interface (library) to communicate with each other across a TCP/IP network. 
 Only IPv4 addressing will be supported by these programs."</p>
 
+<h4> User Interface: </h4>
+<p>  ./mftpserve [-p <port> -d] , where [-p <port> -d] is optional </p>
+<p> ./mftp -d <port> <hostname | IP address> , where -d is optional </p>
+
 <h4> More instructions are available in final.pdf </h4>
 
 
