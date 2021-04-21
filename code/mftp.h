@@ -24,3 +24,4 @@ bool setDebug(int i);
 int isReg (char* path);
 bool isFileExist (char *filename);
 bool canRead(char* path);
+char* ifPathParseName(char* path);

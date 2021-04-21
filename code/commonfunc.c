@@ -28,16 +28,16 @@ void parse(char *buffer, char *command, char *path) {  // parse the given buffer
     char *temp;
     int i = 0;
 
-    // erases data for both char*
-    bzero(command, strlen(command));
-    bzero(path, strlen(path));
-
     temp = strtok(buffer, " ");
     while (temp != NULL) {
-        if (i == 0)
-            strncpy(command, temp, strlen(temp));
-        else
-            strncpy(path, temp, strlen(temp));
+        if (i == 0) {
+            strcpy(command, temp);
+            command[strlen(command)] = '\0';
+        }
+        else {
+            strcpy(path, temp);
+            path[strlen(path)] = '\0';
+        }
         temp = strtok(NULL, " ");
         i++;
     }
@@ -49,4 +49,15 @@ bool setDebug(int i) {
     else
         printf("Debug output enabled.\n");
     return true;
+}
+
+char* ifPathParseName(char* path) {
+    char* temp = strrchr(path, '/'); // last occurrence of '/'
+    if (temp == NULL)
+        return path;
+    else {
+        if (strcmp(&path[strlen(path) - 1], temp) == 0)  // if user provides path like "../" or "../../../"
+            return NULL;
+        return (temp + 1);  // a pointer to the index where the file name is
+    }
 }

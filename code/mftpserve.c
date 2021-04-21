@@ -192,22 +192,22 @@ void commandG(int newLisFd, char* command) { //transfer the contents of <pathnam
     strcpy(pathName, temp);
 
     if (!isFileExist(pathName)) {
-        char *message = "EFile does not exist";
-        fprintf(stderr, "Child %d: Sending acknowledgement -> %s\n", getpid(), message);
+        char *message = "EFile does not exist\n";
+        fprintf(stderr, "Child %d: Sending acknowledgement -> %s", getpid(), message);
         write(newLisFd, message, strlen(message));
         return;
     }
 
     if (!canRead(pathName)) {
-        char *message = "EDoes not have permission to read file";
-        fprintf(stderr, "Child %d: Sending acknowledgement -> %s\n", getpid(), message);
+        char *message = "EDoes not have permission to read file\n";
+        fprintf(stderr, "Child %d: Sending acknowledgement -> %s", getpid(), message);
         write(newLisFd, message, strlen(message));
         return;
     }
     else if (isDirectory(pathName)) {
         printf("Child %d: Attempt to read directory\n", getpid());
-        char *message = "EFile is a directory";
-        fprintf(stderr, "Child %d: Sending acknowledgement -> %s\n", getpid(), message);
+        char *message = "EFile is a directory\n";
+        fprintf(stderr, "Child %d: Sending acknowledgement -> %s", getpid(), message);
         write(newLisFd, message, strlen(message));
         return;
     }
@@ -274,8 +274,8 @@ void commandP(int sockfd, char *path) {
     strcpy(pathName, temp);
 
     if (isFileExist(pathName)) {
-        char *message = "EFile already exist in server local directory";
-        fprintf(stderr, "Child %d: Sending acknowledgement -> %s\n", getpid(), message);
+        char *message = "EFile already exist in server local directory\n";
+        fprintf(stderr, "Child %d: Sending acknowledgement -> %s", getpid(), message);
         write(sockfd, message, strlen(message));
         return;
     }
@@ -284,7 +284,10 @@ void commandP(int sockfd, char *path) {
         printf("Child %d: Sending acknowledgement -> 'A'\n", getpid());
     write(sockfd, "A", 1);
 
-    int file = open(pathName, O_RDWR | O_CREAT, S_IRWXU);
+    char fileName[20];
+    strcpy(fileName, ifPathParseName(pathName));
+
+    int file = open(fileName, O_RDWR | O_CREAT, S_IRWXU);
     if (file < 0) {
         fprintf(stderr, "Error: %s\n", strerror(errno));
     }
@@ -339,17 +342,15 @@ int commandD(int listenFd) {
             exit(1);
         }
 
-        char sendPort[max];
+        char sendPort[10];
         int convert = sprintf(sendPort, "%d", newPort);
+        sendPort[5] = '\0';
         if (convert < 0) {
             fprintf(stderr, "Child %d: Failed to convert port number %d to string\n", getpid(), newPort);
         }
         assert(convert > 0);
 
-        char send[max];
-        strcpy(send, "A");
-        strncat(send, sendPort, strlen(sendPort));
-        write(listenFd, send, strlen(send));  // send to client in the form of 'A49999'
+        write(listenFd, sendPort, strlen(sendPort));
         if (debug) {
             printf("Child %d: Sending port number -> %s\n", getpid(), sendPort);
             printf("Child %d: listening on data socket\n", getpid());
@@ -370,15 +371,15 @@ int commandD(int listenFd) {
 
 void commandC(int socketFd, char *path) {  // change current working directory to the given 'path'
     if (!isFileExist(path)) {
-        char *message = "EGiven path name does not exist";
-        fprintf(stderr, "Child %d: Sending acknowledgement -> %s\n", getpid(), message);
+        char *message = "EGiven path name does not exist\n";
+        fprintf(stderr, "Child %d: Sending acknowledgement -> %s", getpid(), message);
         write(socketFd, message, strlen(message));
         return;
     }
 
     if (!canRead(path)) {
-        char *message = "EDoes not have permission to read";
-        fprintf(stderr, "Child %d: Sending acknowledgement -> %s\n", getpid(), message);
+        char *message = "EDoes not have permission to read\n";
+        fprintf(stderr, "Child %d: Sending acknowledgement -> %s", getpid(), message);
         write(socketFd, message, strlen(message));
         return;
     }
@@ -396,13 +397,14 @@ void commandC(int socketFd, char *path) {  // change current working directory t
         else {
             char *message = "E";
             strncat(message, strerror(errno), strlen(strerror(errno)));
+            strncat(message, "\n", 1);
             write(socketFd, message, strlen(message));
             fprintf(stderr, "Child %d: %s\n", getpid(), strerror(errno));
             return;
         }
     }
     else {
-        char *message = "EThe given path is not a directory - ignored";
+        char *message = "EThe given path is not a directory - ignored\n";
         write(socketFd, message, strlen(message));
         fprintf(stderr, "Child %d: The given path <%s> is not a directory - ignored\n", getpid(), path);
     }
