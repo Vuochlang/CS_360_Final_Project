@@ -16,27 +16,27 @@ void commandP(int sockfd, char *path);
 int main(int argc, char const *argv[]) {
     bool error = true;
 
-    if (argc == 1)  // ./mftpserve
+    if (argc == 1)
         error = false;
 
-    else if (argc == 2 && strcmp("-d", argv[1]) == 0) { // ./mftpserve -d
+    else if (argc == 2 && strcmp("-d", argv[1]) == 0) {
         error = false;
         debug = setDebug(0);
     }
-    else if (argc == 3 && strcmp("-p", argv[1]) == 0 && isNumber(argv[2])) {  // ./mftpserve -p <port>
+    else if (argc == 3 && strcmp("-p", argv[1]) == 0 && isNumber(argv[2])) {
         portNumber = atoi(argv[2]);
         error = false;
     }
     else if (argc == 4 && strcmp("-d", argv[1]) == 0) {
         debug = setDebug(0);
-        if (strcmp("-p", argv[2]) == 0 && isNumber(argv[3])) {  // ./mftpserve -d -p <port>
+        if (strcmp("-p", argv[2]) == 0 && isNumber(argv[3])) {
             portNumber = atoi(argv[3]);
             error = false;
         }
     }
     else if (argc == 4 && strcmp("-p", argv[1]) == 0 && isNumber(argv[2])) {
         portNumber = atoi(argv[2]);
-        if (strcmp("-d", argv[3]) == 0) {  // ./mftpserve -p <port> -d
+        if (strcmp("-d", argv[3]) == 0) {
             debug = setDebug(0);
             error = false;
         }
@@ -58,7 +58,6 @@ void createSever() {
     struct sockaddr_in servAddr, clientAddr;
     int length = sizeof(struct sockaddr_in);
 
-    // make a socket
     socketFd = socket(AF_INET, SOCK_STREAM, 0);
     if (socketFd < 0) {
         fprintf(stderr, "Error: %s\n", strerror(errno));
@@ -72,7 +71,6 @@ void createSever() {
     if (debug)
         printf("Parent: socket created with descriptor %d\n", socketFd);
 
-    // Bind the socket to a port
     memset(&servAddr, 0, sizeof(servAddr));
     servAddr.sin_family = AF_INET;
     servAddr.sin_port = htons(portNumber);
@@ -85,7 +83,6 @@ void createSever() {
     if (debug)
         printf("Parent: socket bound to port %d\n", portNumber);
 
-    // Listen with backlog of 4
     if (listen(socketFd, 4) < 0) {
         fprintf(stderr, "Error: %s\n", strerror(errno));
         exit(1);
@@ -94,7 +91,7 @@ void createSever() {
         printf("Parent: listening with connection queue of 4\n");
 
     while(1) {
-        if ((listenFd = accept(socketFd, (struct sockaddr *) &clientAddr, &length)) < 0) {  // accept client
+        if ((listenFd = accept(socketFd, (struct sockaddr *) &clientAddr, &length)) < 0) {
             fprintf(stderr, "Error: %s\n", strerror(errno));
             exit(1);
         }
@@ -104,7 +101,7 @@ void createSever() {
         int pid = fork();
         int status;
 
-        if (pid == 0) {  // child process
+        if (pid == 0) {
             close(socketFd);
             printf("Child %d: started\n", getpid());
 
@@ -151,26 +148,26 @@ void createSever() {
                         commandC(listenFd, path);
                     }
                     else if (strncmp("D", command, 1) == 0) {
-                        int newListenFd = commandD(listenFd);  //get a new listen fd after established a data connection
-                        memset(command, 0, sizeof(command));
-                        while ((readResult = read(newListenFd, command, max)) > 0) {
-                            if (strncmp(command, "L", 1) == 0) {
-                                commandL(newListenFd);
+                        int newListenFd = commandD(listenFd);
+                        if (newListenFd > -1) {
+                            memset(command, 0, sizeof(command));
+                            while ((readResult = read(newListenFd, command, max)) > 0) {
+                                if (strncmp(command, "L", 1) == 0) {
+                                    commandL(newListenFd);
+                                } else if (strncmp(command, "G", 1) == 0) {
+                                    commandG(newListenFd, command);
+                                } else if (strncmp(command, "P", 1) == 0) {
+                                    commandP(newListenFd, command);
+                                }
+                                close(newListenFd);
+                                break;
                             }
-                            else if (strncmp(command, "G", 1) == 0) {
-                                commandG(newListenFd, command);
-                            }
-                            else if (strncmp(command, "P", 1) == 0) {
-                                commandP(newListenFd, command);
-                            }
-                            close(newListenFd);
-                            break;
                         }
                     }
                 }
                 memset(command, 0, sizeof(command));
             }
-            if (readResult <= 0) {  // when client hits Ctrl-C
+            if (readResult <= 0) {
                 printf("Parent detected termination of child process %d, exit code: 0\n",
                        getpid());
                 exit(0);
@@ -179,13 +176,13 @@ void createSever() {
         else {
             if (debug)
                 printf("Parent: spawned child %d, waiting for new connection\n", pid);
-            waitpid(-1, &status, WNOHANG); // flag to tell the parent process not to wait
+            waitpid(-1, &status, WNOHANG);
             close(listenFd);
         }
     }
 }
 
-void commandG(int newLisFd, char* command) { //transfer the contents of <pathname> to the client with data connection fd
+void commandG(int newLisFd, char* command) {
 
     char pathName[strlen(command) - 1];
     char *temp = command + 1;
@@ -222,7 +219,7 @@ void commandG(int newLisFd, char* command) { //transfer the contents of <pathnam
         int readResult;
         char fileContent[512];
         readResult = read(file, fileContent, 512);
-        while (readResult > 0) {  // read file content and write to the client using new listen fd from data connection
+        while (readResult > 0) {
             write(newLisFd, fileContent, readResult);
             readResult = read(file, fileContent, 512);
         }
@@ -235,7 +232,7 @@ void commandG(int newLisFd, char* command) { //transfer the contents of <pathnam
     }
 }
 
-void commandL(int newLisFd) {  // execute 'ls -l' and send content to client
+void commandL(int newLisFd) {
     write(newLisFd, "A", 1);
     if (debug)
         printf("Child %d: Sending positive acknowledgement\n", getpid());
@@ -256,7 +253,7 @@ void commandL(int newLisFd) {  // execute 'ls -l' and send content to client
         return;
     }
     else {
-        dup2(newLisFd, STDOUT_FILENO);  // redirect output to the given fd
+        dup2(newLisFd, STDOUT_FILENO);
         close(newLisFd);
 
         char *arg = "-l";
@@ -305,14 +302,15 @@ void commandP(int sockfd, char *path) {
 }
 
 int commandD(int listenFd) {
+    char *message = "EError occurred with command \n";
     int socketFd2;
     struct sockaddr_in clientAddr;
 
-    // make a socket
     socketFd2 = socket(AF_INET, SOCK_STREAM, 0);
     if (socketFd2 < 0) {
         fprintf(stderr, "Error: %s\n", strerror(errno));
-        exit(1);
+        write(listenFd, message, strlen(message));
+        return -1;
     }
     if (debug)
         printf("Child %d: data socket created with descriptor %d\n", getpid(), socketFd2);
@@ -321,10 +319,11 @@ int commandD(int listenFd) {
     memset(&servAddr2, 0, sizeof(servAddr2));
     servAddr2.sin_family = AF_INET;
     servAddr2.sin_addr.s_addr = htonl(INADDR_ANY);
-    servAddr2.sin_port = htons(0); // wildcard
+    servAddr2.sin_port = htons(0);
     if (bind(socketFd2, (struct sockaddr *) &servAddr2, sizeof(servAddr2)) < 0) {
         fprintf(stderr, "Error: %s\n", strerror(errno));
-        exit(1);
+        write(listenFd, message, strlen(message));
+        return -1;
     }
 
     socklen_t length2 = sizeof(servAddr2);
@@ -336,10 +335,10 @@ int commandD(int listenFd) {
         if (debug)
             printf("Child %d: Data socket bound to port %d\n", getpid(), newPort);
 
-        // Listen and Accept connections
         if (listen(socketFd2, 1) < 0) {
             fprintf(stderr, "Error: %s\n", strerror(errno));
-            exit(1);
+            write(listenFd, message, strlen(message));
+            return -1;
         }
 
         char sendPort[10];
@@ -347,6 +346,8 @@ int commandD(int listenFd) {
         sendPort[5] = '\0';
         if (convert < 0) {
             fprintf(stderr, "Child %d: Failed to convert port number %d to string\n", getpid(), newPort);
+            write(listenFd, message, strlen(message));
+            return -1;
         }
         assert(convert > 0);
 
@@ -357,9 +358,13 @@ int commandD(int listenFd) {
         }
 
         int listenFd2, length2;
-        if ((listenFd2 = accept(socketFd2, (struct sockaddr *) &clientAddr, &length2)) < 0) {  //get a connection
+        if ((listenFd2 = accept(socketFd2, (struct sockaddr *) &clientAddr, &length2)) < 0) {
             fprintf(stderr, "Error: %s\n", strerror(errno));
+            write(listenFd, message, strlen(message));
+            close(listenFd2);
+            return -1;
         }
+        write(listenFd, "A", 1);
 
         if (debug) {
             printf("Child %d: Accepted connection from host %s on the data socket with descriptor %d\n", getpid(), hostName, listenFd2);
@@ -369,48 +374,39 @@ int commandD(int listenFd) {
     }
 }
 
-void commandC(int socketFd, char *path) {  // change current working directory to the given 'path'
-    if (!isFileExist(path)) {
-        char *message = "EGiven path name does not exist\n";
-        fprintf(stderr, "Child %d: Sending acknowledgement -> %s", getpid(), message);
-        write(socketFd, message, strlen(message));
-        return;
-    }
-
-    if (!canRead(path)) {
-        char *message = "EDoes not have permission to read\n";
-        fprintf(stderr, "Child %d: Sending acknowledgement -> %s", getpid(), message);
-        write(socketFd, message, strlen(message));
-        return;
-    }
-
+void commandC(int socketFd, char *path) {
     if (isDirectory(path)) {
+        if (!canRead(path)) {
+            char *message = "EDoes not have permission to read\n";
+            printf("Child %d: Sending acknowledgement -> %s", getpid(), message);
+            write(socketFd, message, strlen(message));
+            return;
+        }
+
         if (chdir(path) == 0) {
             if (debug) {
                 printf("Child %d: Changed current directory to %s\n", getpid(), path);
             }
             write(socketFd, "A", sizeof("A"));
-            if (debug)
-                printf("Child %d: Sending positive acknowledgement\n", getpid());
+            printf("Child %d: Sending positive acknowledgement\n", getpid());
             return;
         }
         else {
             char *message = "E";
             strncat(message, strerror(errno), strlen(strerror(errno)));
-            strncat(message, "\n", 1);
+            strcat(message, "\n");
             write(socketFd, message, strlen(message));
-            fprintf(stderr, "Child %d: %s\n", getpid(), strerror(errno));
             return;
         }
     }
     else {
         char *message = "EThe given path is not a directory - ignored\n";
         write(socketFd, message, strlen(message));
-        fprintf(stderr, "Child %d: The given path <%s> is not a directory - ignored\n", getpid(), path);
+        printf("Child %d: The given path <%s> is not a directory - ignored\n", getpid(), path);
     }
 }
 
-bool isNumber(const char argv[]) {  // check if 'argv[]' is digit number
+bool isNumber(const char argv[]) {
     for (int i = 0; i < strlen(argv); i++) {
         if (!isdigit(argv[i]))
             return false;
